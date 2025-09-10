@@ -19,17 +19,45 @@ def setup_driver():
     """Setup Chrome driver and return the driver instance."""
     print("Initializing the Chrome driver...")
     
-    # Setup Chrome options for headless mode
+    # Setup Chrome options for Docker environment
     chrome_options = Options()
-    chrome_options.add_argument("--headless")  # Run in headless mode
-    # chrome_options.add_argument("--no-sandbox")  # Bypass OS security model
+    
+    # Essential arguments for Docker/headless environment
+    chrome_options.add_argument("--headless")  # Must be headless in Docker
+    # chrome_options.add_argument("--no-sandbox")  # Required for Docker
     # chrome_options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
     # chrome_options.add_argument("--disable-gpu")  # Disable GPU acceleration
-    # chrome_options.add_argument("--window-size=1920,1080")  # Set window size for headless mode
-    # chrome_options.add_argument("--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")  # Set realistic user agent
+    # chrome_options.add_argument("--disable-extensions")  # Disable extensions
+    # chrome_options.add_argument("--window-size=1920,1080")  # Set window size
+    # chrome_options.add_argument("--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     
-    driver = webdriver.Chrome(options=chrome_options)
-    return driver
+    # # Additional options to avoid detection
+    # chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+    # chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    # chrome_options.add_experimental_option('useAutomationExtension', False)
+    
+    try:
+        # Detect if we're running in Docker by checking for the Docker-specific paths
+        if os.path.exists("/usr/bin/chromium") and os.path.exists("/usr/local/bin/chromedriver"):
+            print("🐳 Detected Docker environment, using Docker Chrome setup...")
+            chrome_options.binary_location = "/usr/bin/chromium"
+            service = Service("/usr/local/bin/chromedriver")
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+        else:
+            print("💻 Using local Chrome setup...")
+            # For local development, let Selenium find Chrome automatically
+            driver = webdriver.Chrome(options=chrome_options)
+        
+        # Execute script to remove automation detection
+        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        
+        print("✅ Chrome driver initialized successfully!")
+        return driver
+        
+    except Exception as e:
+        print(f"❌ Failed to initialize Chrome driver: {e}")
+        print("💡 Make sure Chrome/Chromium is installed and accessible")
+        raise e
 
 
 # Function to add the LinkedIn cookie
@@ -41,7 +69,19 @@ def add_cookie(driver):
     driver.get("https://www.linkedin.com")
     time.sleep(2)
     
-    cookie_file = os.getenv("COOKIES_PATH")
+    # Get cookies path from environment variable, with Docker-friendly default
+    cookie_file = os.getenv("COOKIES_PATH", "/app/cookies.json")
+    
+    # If running locally (not in Docker), fall back to local path
+    if not os.path.exists(cookie_file) and cookie_file == "/app/cookies.json":
+        cookie_file = "cookies.json"
+    
+    print(f"Using cookies file: {cookie_file}")
+    
+    # Verify the file exists
+    if not os.path.exists(cookie_file):
+        raise FileNotFoundError(f"Cookies file not found: {cookie_file}")
+    
     with open(cookie_file, 'r') as file:
         cookies = json.load(file)
     
@@ -156,7 +196,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
